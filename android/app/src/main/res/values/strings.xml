@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RIDER Wallpaper</string>
+    <string name="title_activity_main">RIDER Wallpaper</string>
+    <string name="package_name">com.rider.wallpaper</string>
+    <string name="custom_url_scheme">com.rider.wallpaper</string>
+</resources>

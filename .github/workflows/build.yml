@@ -1,4 +1,4 @@
-name: Build App & Android APK
+name: Build Android APK
 
 on:
   push:
@@ -8,35 +8,45 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-apk:
+    name: Build Android APK
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
-      - name: Install dependencies
+      - name: Set up Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Dependencies
         run: npm install
 
-      - name: Build Application
+      - name: Build Web Assets
         run: npm run build
 
-      - name: Setup EAS CLI (for Android APK)
-        if: env.EXPO_TOKEN != ''
-        uses: expo/expo-github-action@v8
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Sync Capacitor Android Project
+        run: npx cap sync android
+
+      - name: Make gradlew Executable
+        run: chmod +x android/gradlew
 
       - name: Build Android APK
-        if: env.EXPO_TOKEN != ''
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: eas build --platform android --profile preview --non-interactive
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error

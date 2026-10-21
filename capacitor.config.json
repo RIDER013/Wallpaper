@@ -1,0 +1,6 @@
+{
+  "appId": "com.rider.wallpaper",
+  "appName": "RIDER Wallpaper",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}
