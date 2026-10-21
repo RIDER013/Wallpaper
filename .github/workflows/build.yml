@@ -1,8 +1,11 @@
-name: Build Android App
+name: Build App & Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -14,18 +17,26 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
 
-      - name: Setup EAS Build
+      - name: Build Application
+        run: npm run build
+
+      - name: Setup EAS CLI (for Android APK)
+        if: env.EXPO_TOKEN != ''
         uses: expo/expo-github-action@v8
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
           eas-version: latest
-          expo-version: 51.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build Android APK
+        if: env.EXPO_TOKEN != ''
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: eas build --platform android --profile preview --non-interactive
-        
