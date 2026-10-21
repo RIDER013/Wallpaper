@@ -77,7 +77,7 @@ export default function App() {
     if (!isDragging) return;
     setPosition({
       x: e.clientX - dragStartRef.current.startX,
-      y: e.clientY - dragStartRef.current.startY,
+      y: 0, // Locked to 0 for left/right only dragging
     });
   };
 
@@ -114,24 +114,25 @@ export default function App() {
   };
 
   const handleApplyWallpaper = async (option: string) => {
-    if (mediaUri) {
-      try {
-        await WallpaperPlugin.setWallpaper({
-          uri: mediaUri,
-          type: option,
-        });
-      } catch (err) {
-        console.log('Wallpaper set error or web mode:', err);
+    if (!mediaUri) return;
+    try {
+      await WallpaperPlugin.setWallpaper({
+        uri: mediaUri,
+        type: option,
+      });
+      // Show success popup ONLY when successfully set in reality
+      setShowSuccessPopup(true);
+      if (autoHomeTimerRef.current) {
+        clearTimeout(autoHomeTimerRef.current);
       }
+      autoHomeTimerRef.current = window.setTimeout(() => {
+        handleCloseSuccessAndGoHome();
+      }, 1800);
+    } catch (err) {
+      console.error('Wallpaper set failed:', err);
+      // Do NOT show success popup if failed
+      alert('Wallpaper could not be set. Please try again.');
     }
-    setShowSuccessPopup(true);
-    if (autoHomeTimerRef.current) {
-      clearTimeout(autoHomeTimerRef.current);
-    }
-    // Automatically return to home screen after 1.8 seconds
-    autoHomeTimerRef.current = window.setTimeout(() => {
-      handleCloseSuccessAndGoHome();
-    }, 1800);
   };
 
   const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
