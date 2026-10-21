@@ -27,16 +27,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Cache Gradle Caches
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('android/build.gradle', 'android/app/build.gradle') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
-
       - name: Install Node Dependencies
         run: npm install
 
@@ -49,10 +39,10 @@ jobs:
       - name: Make Gradle Executable
         run: chmod +x android/gradlew
 
-      - name: Build Android APK with Gradle
+      - name: Build Android APK with Gradle (Sequential)
         run: |
           cd android
-          ./gradlew clean assembleDebug --no-daemon --refresh-dependencies
+          ./gradlew clean assembleDebug --no-daemon
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
