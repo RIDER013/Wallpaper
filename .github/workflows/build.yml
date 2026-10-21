@@ -27,10 +27,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Accept Android SDK Licenses
-        run: |
-          yes | sdkmanager --licenses || true
-
       - name: Install Node Dependencies
         run: npm install
 
@@ -43,7 +39,7 @@ jobs:
       - name: Make Gradle Executable
         run: chmod +x android/gradlew
 
-      - name: Build Android APK
+      - name: Build Android APK with Gradle
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon
