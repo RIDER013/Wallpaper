@@ -3,17 +3,14 @@ package com.rider.wallpaper;
 import android.app.WallpaperManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.net.Uri;
 import android.os.Build;
+import android.util.Base64;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-
-import java.io.File;
-import java.io.InputStream;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -36,22 +33,21 @@ public class MainActivity extends BridgeActivity {
 
             try {
                 WallpaperManager wallpaperManager = WallpaperManager.getInstance(getContext());
-                Uri uri = Uri.parse(imageUriStr);
-                InputStream inputStream;
+                byte[] decodedBytes;
 
-                if (imageUriStr.startsWith("content://") || imageUriStr.startsWith("file://")) {
-                    inputStream = getContext().getContentResolver().openInputStream(uri);
+                if (imageUriStr.contains(",")) {
+                    String base64Data = imageUriStr.split(",")[1];
+                    decodedBytes = Base64.decode(base64Data, Base64.DEFAULT);
                 } else {
-                    File file = new File(imageUriStr);
-                    inputStream = new java.io.FileInputStream(file);
+                    decodedBytes = Base64.decode(imageUriStr, Base64.DEFAULT);
                 }
 
-                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
                 if (bitmap != null) {
                     int flags = WallpaperManager.FLAG_SYSTEM | WallpaperManager.FLAG_LOCK;
-                    if ("Home screen".equalsIgnoreCase(type)) {
+                    if ("Home screen".equalsIgnoreCase(type) || "Home Screen".equalsIgnoreCase(type)) {
                         flags = WallpaperManager.FLAG_SYSTEM;
-                    } else if ("Lock screen".equalsIgnoreCase(type)) {
+                    } else if ("Lock screen".equalsIgnoreCase(type) || "Lock Screen".equalsIgnoreCase(type)) {
                         flags = WallpaperManager.FLAG_LOCK;
                     }
 
@@ -63,7 +59,7 @@ public class MainActivity extends BridgeActivity {
 
                     call.resolve();
                 } else {
-                    call.reject("Failed to decode image bitmap");
+                    call.reject("Failed to decode bitmap from base64 data");
                 }
             } catch (Exception e) {
                 call.reject("Failed to set wallpaper: " + e.getMessage());

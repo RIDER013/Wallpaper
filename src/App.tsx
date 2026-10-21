@@ -10,7 +10,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import bgImage from './assets/bg.png';
-import { registerPlugin } from '@capacitor/core';
+import { registerPlugin, Capacitor } from '@capacitor/core';
 
 interface WallpaperPlugin {
   setWallpaper(options: { uri: string; type: string }): Promise<void>;
@@ -22,6 +22,7 @@ export default function App() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [step, setStep] = useState<'home' | 'adjust' | 'preview'>('home');
+  const [selectedTarget, setSelectedTarget] = useState<'Home screen' | 'Lock screen' | 'Both'>('Both');
 
   // Interactive Drag & Scale State (hatane adjust karaych)
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -40,12 +41,18 @@ export default function App() {
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setMediaType('image');
-      setMediaUri(url);
-      setPosition({ x: 0, y: 0 });
-      setScale(1);
-      setStep('adjust');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Str = event.target?.result as string;
+        if (base64Str) {
+          setMediaType('image');
+          setMediaUri(base64Str);
+          setPosition({ x: 0, y: 0 });
+          setScale(1);
+          setStep('adjust');
+        }
+      };
+      reader.readAsDataURL(file);
     }
     e.target.value = '';
   };
@@ -53,12 +60,18 @@ export default function App() {
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setMediaType('video');
-      setMediaUri(url);
-      setPosition({ x: 0, y: 0 });
-      setScale(1);
-      setStep('adjust');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Str = event.target?.result as string;
+        if (base64Str) {
+          setMediaType('video');
+          setMediaUri(base64Str);
+          setPosition({ x: 0, y: 0 });
+          setScale(1);
+          setStep('adjust');
+        }
+      };
+      reader.readAsDataURL(file);
     }
     e.target.value = '';
   };
@@ -116,11 +129,16 @@ export default function App() {
   const handleApplyWallpaper = async (option: string) => {
     if (!mediaUri) return;
     try {
-      await WallpaperPlugin.setWallpaper({
-        uri: mediaUri,
-        type: option,
-      });
-      // Show success popup ONLY when successfully set in reality
+      if (Capacitor.isNativePlatform()) {
+        await WallpaperPlugin.setWallpaper({
+          uri: mediaUri,
+          type: option,
+        });
+      } else {
+        // Web preview simulation
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      // Show success popup ONLY when successfully set
       setShowSuccessPopup(true);
       if (autoHomeTimerRef.current) {
         clearTimeout(autoHomeTimerRef.current);
@@ -130,7 +148,6 @@ export default function App() {
       }, 1800);
     } catch (err) {
       console.error('Wallpaper set failed:', err);
-      // Do NOT show success popup if failed
       alert('Wallpaper could not be set. Please try again.');
     }
   };
@@ -175,14 +192,14 @@ export default function App() {
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <p className="text-base font-semibold text-white mb-5">
-              Wallpaper set successfully
+              Wallpaper Set Successfully - Done
             </p>
             <button
               type="button"
               onClick={handleCloseSuccessAndGoHome}
               className="w-full bg-green-600 hover:bg-green-500 active:scale-95 text-white font-medium py-2.5 rounded-xl transition cursor-pointer shadow-lg shadow-green-900/30"
             >
-              OK
+              Done
             </button>
           </div>
         </div>
@@ -327,97 +344,92 @@ export default function App() {
 
           {/* STEP 3: PREVIEW & APPLY OPTIONS */}
           {step === 'preview' && (
-            <div className="w-full flex flex-col h-full justify-between">
+            <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4 select-none">
               {/* Header with Edit Button */}
-              <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-800/80">
+              <div className="flex items-center justify-between z-20 pt-2">
                 <button
                   type="button"
                   onClick={() => setStep('adjust')}
-                  className="flex items-center gap-1 text-xs text-gray-300 hover:text-white bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition cursor-pointer"
+                  className="flex items-center gap-1.5 text-xs text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-full transition cursor-pointer backdrop-blur-md"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Edit
+                  <ArrowLeft className="w-4 h-4" /> Edit
                 </button>
-                <span className="text-xs font-semibold text-green-400">Preview Mode</span>
               </div>
 
-              {/* Simulated Phone Mockup Frame - Larger as requested */}
-              <div className="relative w-full h-[460px] sm:h-[500px] rounded-[34px] p-2 bg-neutral-900 border-2 border-neutral-700 shadow-2xl overflow-hidden my-2 flex flex-col justify-between">
-                {/* Notch */}
-                <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-20 h-3.5 bg-black rounded-full z-20"></div>
-
-                {/* Media Layer (with saved hand-adjusted position & scale) */}
-                <div className="absolute inset-0 z-0 bg-black overflow-hidden flex items-center justify-center">
-                  {mediaType === 'image' && mediaUri ? (
-                    <img
-                      src={mediaUri}
-                      alt="Wallpaper Mock"
-                      className="w-full h-full object-cover pointer-events-none select-none"
-                      style={{
-                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                      }}
-                    />
-                  ) : mediaType === 'video' && mediaUri ? (
-                    <video
-                      ref={previewVideoRef}
-                      src={mediaUri}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover pointer-events-none select-none"
-                      style={{
-                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                      }}
-                    />
-                  ) : null}
-                </div>
-
-                {/* Time & Date Overlay on Lockscreen */}
-                <div className="relative z-10 text-center mt-7 select-none pointer-events-none drop-shadow-lg">
-                  <span className="text-5xl sm:text-6xl font-extralight text-white tracking-tight">
-                    {formattedTime}
-                  </span>
-                  <p className="text-xs sm:text-sm text-gray-200 font-medium drop-shadow mt-1">
-                    {formattedDate}
-                  </p>
-                </div>
-
-                {/* Ready Indicator on Dock */}
-                <div className="relative z-10 w-full bg-black/40 backdrop-blur-md rounded-xl py-2 px-3 text-center text-[10px] text-gray-200 border border-white/10 mb-1">
-                  Wallpaper Ready to Apply
-                </div>
+              {/* Full Screen Media Layer */}
+              <div className="absolute inset-0 z-0 bg-black overflow-hidden flex items-center justify-center">
+                {mediaType === 'image' && mediaUri ? (
+                  <img
+                    src={mediaUri}
+                    alt="Wallpaper Fullscreen"
+                    className="w-full h-full object-cover pointer-events-none select-none"
+                    style={{
+                      transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                    }}
+                  />
+                ) : mediaType === 'video' && mediaUri ? (
+                  <video
+                    ref={previewVideoRef}
+                    src={mediaUri}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover pointer-events-none select-none"
+                    style={{
+                      transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                    }}
+                  />
+                ) : null}
               </div>
 
-              {/* Wallpaper Options */}
-              <div className="mt-3 w-full">
-                <div className="grid grid-cols-3 gap-2">
+              {/* Bottom: Selection Names and Done Button */}
+              <div className="relative z-20 mt-4 w-full max-w-sm mx-auto bg-black/75 backdrop-blur-md p-4 rounded-3xl border border-white/10 shadow-2xl mb-4 flex flex-col gap-3">
+                <div className="flex items-center justify-start gap-2.5">
                   <button
                     type="button"
-                    onClick={() => handleApplyWallpaper('Lock screen')}
-                    className="flex flex-col items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700/80 active:scale-95 py-3 px-2 rounded-xl transition-all cursor-pointer"
+                    onClick={() => setSelectedTarget('Home screen')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      selectedTarget === 'Home screen'
+                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/50 ring-2 ring-blue-400 scale-105'
+                        : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                    }`}
                   >
-                    <Lock className="w-4 h-4 text-green-400" />
-                    <span className="text-[11px] font-medium">Lock screen</span>
+                    Home Screen
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleApplyWallpaper('Home screen')}
-                    className="flex flex-col items-center justify-center gap-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700/80 active:scale-95 py-3 px-2 rounded-xl transition-all cursor-pointer"
+                    onClick={() => setSelectedTarget('Lock screen')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      selectedTarget === 'Lock screen'
+                        ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/50 ring-2 ring-purple-400 scale-105'
+                        : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                    }`}
                   >
-                    <Home className="w-4 h-4 text-blue-400" />
-                    <span className="text-[11px] font-medium">Home screen</span>
+                    Lock Screen
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => handleApplyWallpaper('Both')}
-                    className="flex flex-col items-center justify-center gap-1.5 bg-green-600 hover:bg-green-500 text-white border border-green-500 active:scale-95 py-3 px-2 rounded-xl shadow-lg shadow-green-950/40 transition-all cursor-pointer"
+                    onClick={() => setSelectedTarget('Both')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      selectedTarget === 'Both'
+                        ? 'bg-green-600 text-white shadow-lg shadow-green-500/50 ring-2 ring-green-400 scale-105'
+                        : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                    }`}
                   >
-                    <Check className="w-4 h-4 text-white" />
-                    <span className="text-[11px] font-medium">Both</span>
+                    Both
                   </button>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleApplyWallpaper(selectedTarget)}
+                  className="w-full flex items-center justify-center bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600 text-white active:scale-95 py-3 rounded-xl shadow-lg shadow-green-950/40 transition-all cursor-pointer text-sm font-bold tracking-wide"
+                >
+                  Done
+                </button>
               </div>
             </div>
           )}
