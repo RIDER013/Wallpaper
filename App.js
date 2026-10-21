@@ -17,7 +17,7 @@ export default function App() {
 
     if (!result.canceled) {
       setSelectedMedia(result.assets[0].uri);
-      Alert. посад("Success", `${mediaType === 'video' ? 'Video' : 'Image'} successfully select zali ahe!`);
+      Alert.alert("Success", `${mediaType === 'video' ? 'Video' : 'Image'} successfully select zali ahe!`);
     }
   };
 
