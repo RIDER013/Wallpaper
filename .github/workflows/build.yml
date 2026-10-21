@@ -11,42 +11,46 @@ jobs:
   build-apk:
     name: Build Android APK
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Set up Java JDK 17
+      - name: Setup Java JDK 17
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
 
-      - name: Install Dependencies
+      - name: Install Node Dependencies
         run: npm install
 
-      - name: Build Web Assets
+      - name: Build Web Application
         run: npm run build
 
-      - name: Sync Capacitor Android Project
+      - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Make gradlew Executable
+      - name: Make Gradle Executable
         run: chmod +x android/gradlew
 
       - name: Build Android APK
-        run: cd android && ./gradlew assembleDebug --no-daemon
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Upload Android APK Artifact
+      - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: RIDER-Wallpaper-APK
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
