@@ -5,7 +5,6 @@ import * as ImagePicker from 'expo-image-picker';
 export default function App() {
   const [selectedMedia, setSelectedMedia] = useState(null);
 
-  // Gallery madhun media (Image / Video) nivdnyasathi function
   const pickMedia = async (mediaType) => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: mediaType === 'video' 
@@ -26,12 +25,10 @@ export default function App() {
       <Text style={styles.title}>Wallpaper Setter</Text>
       <Text style={styles.subtitle}>Select an option below to set your wallpaper</Text>
 
-      {/* 1. Set Image Wallpaper Button */}
       <TouchableOpacity style={styles.button} onPress={() => pickMedia('image')}>
         <Text style={styles.buttonText}>Set Image Wallpaper</Text>
       </TouchableOpacity>
 
-      {/* 2. Set Video Wallpaper Button */}
       <TouchableOpacity style={[styles.button, styles.videoButton]} onPress={() => pickMedia('video')}>
         <Text style={styles.buttonText}>Set Video Wallpaper</Text>
       </TouchableOpacity>
