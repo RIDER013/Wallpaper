@@ -58,36 +58,62 @@ export default function App() {
     e.target.value = '';
   };
 
-  const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const extractVideoThumbnail = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'auto';
+      const url = URL.createObjectURL(file);
+      video.src = url;
+      video.muted = true;
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+
+      video.onloadedmetadata = () => {
+        video.currentTime = Math.min(1.0, video.duration / 2);
+      };
+
+      video.onseeked = () => {
+        setTimeout(() => {
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 1080;
+          canvas.height = video.videoHeight || 1920;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            URL.revokeObjectURL(url);
+            resolve(dataUrl);
+          } else {
+            reject(new Error('Canvas context is null'));
+          }
+        }, 300);
+      };
+
+      video.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(e);
+      };
+
+      video.load();
+    });
+  };
+
+  const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const videoUrl = URL.createObjectURL(file);
-      
-      const video = document.createElement('video');
-      video.preload = 'metadata';
-      video.src = videoUrl;
-      video.muted = true;
-      video.playsInline = true;
-      video.onloadeddata = () => {
-        video.currentTime = 0.5;
-      };
-      video.onseeked = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1080;
-        canvas.height = video.videoHeight || 1920;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const thumbDataUrl = canvas.toDataURL('image/jpeg', 0.95);
-          setVideoThumbnailUri(thumbDataUrl);
-        }
-      };
-
       setMediaType('video');
       setMediaUri(videoUrl);
       setPosition({ x: 0, y: 0 });
       setScale(1);
       setStep('adjust');
+
+      try {
+        const thumbDataUrl = await extractVideoThumbnail(file);
+        setVideoThumbnailUri(thumbDataUrl);
+      } catch (err) {
+        console.error('Failed to extract video thumbnail:', err);
+      }
     }
     e.target.value = '';
   };
