@@ -23,6 +23,7 @@ export default function App() {
   const [mediaUri, setMediaUri] = useState<string | null>(null);
   const [step, setStep] = useState<'home' | 'adjust' | 'preview'>('home');
   const [selectedTarget, setSelectedTarget] = useState<'Home screen' | 'Lock screen' | 'Both'>('Both');
+  const [videoThumbnailUri, setVideoThumbnailUri] = useState<string | null>(null);
 
   // Interactive Drag & Scale State (hatane adjust karaych)
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -60,18 +61,33 @@ export default function App() {
   const handleVideoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const base64Str = event.target?.result as string;
-        if (base64Str) {
-          setMediaType('video');
-          setMediaUri(base64Str);
-          setPosition({ x: 0, y: 0 });
-          setScale(1);
-          setStep('adjust');
+      const videoUrl = URL.createObjectURL(file);
+      
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.src = videoUrl;
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadeddata = () => {
+        video.currentTime = 0.5;
+      };
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1080;
+        canvas.height = video.videoHeight || 1920;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const thumbDataUrl = canvas.toDataURL('image/jpeg', 0.95);
+          setVideoThumbnailUri(thumbDataUrl);
         }
       };
-      reader.readAsDataURL(file);
+
+      setMediaType('video');
+      setMediaUri(videoUrl);
+      setPosition({ x: 0, y: 0 });
+      setScale(1);
+      setStep('adjust');
     }
     e.target.value = '';
   };
@@ -122,16 +138,18 @@ export default function App() {
     setStep('home');
     setMediaType(null);
     setMediaUri(null);
+    setVideoThumbnailUri(null);
     setPosition({ x: 0, y: 0 });
     setScale(1);
   };
 
   const handleApplyWallpaper = async (option: string) => {
-    if (!mediaUri) return;
+    const uriToApply = (mediaType === 'video' && videoThumbnailUri) ? videoThumbnailUri : mediaUri;
+    if (!uriToApply) return;
     try {
       if (Capacitor.isNativePlatform()) {
         await WallpaperPlugin.setWallpaper({
-          uri: mediaUri,
+          uri: uriToApply,
           type: option,
         });
       } else {
