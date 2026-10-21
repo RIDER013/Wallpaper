@@ -10,6 +10,13 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import bgImage from './assets/bg.png';
+import { registerPlugin } from '@capacitor/core';
+
+interface WallpaperPlugin {
+  setWallpaper(options: { uri: string; type: string }): Promise<void>;
+}
+
+const WallpaperPlugin = registerPlugin<WallpaperPlugin>('WallpaperPlugin');
 
 export default function App() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
@@ -106,7 +113,17 @@ export default function App() {
     setScale(1);
   };
 
-  const handleApplyWallpaper = (_option: string) => {
+  const handleApplyWallpaper = async (option: string) => {
+    if (mediaUri) {
+      try {
+        await WallpaperPlugin.setWallpaper({
+          uri: mediaUri,
+          type: option,
+        });
+      } catch (err) {
+        console.log('Wallpaper set error or web mode:', err);
+      }
+    }
     setShowSuccessPopup(true);
     if (autoHomeTimerRef.current) {
       clearTimeout(autoHomeTimerRef.current);
