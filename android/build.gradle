@@ -21,9 +21,6 @@ allprojects {
         google()
         mavenCentral()
     }
-    configurations.all {
-        exclude group: 'org.bouncycastle', module: 'bcprov-jdk18on'
-    }
 }
 
 task clean(type: Delete) {
