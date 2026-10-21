@@ -19,12 +19,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Hi navin step add kar: EAS CLI global install karnyasathi
-      - name: Setup EAS CLI
+      - name: Setup EAS Build
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
+          expo-version: 51.0.0
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build Android APK
         run: eas build --platform android --profile preview --non-interactive
+        
