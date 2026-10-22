@@ -296,6 +296,8 @@ export default function App() {
                   loop
                   muted
                   playsInline
+                  preload="auto"
+                  onEnded={(e) => { e.currentTarget.play(); }}
                   className="max-w-none w-full h-full object-cover select-none pointer-events-none"
                 />
               ) : null}
@@ -419,6 +421,8 @@ export default function App() {
                     loop
                     muted
                     playsInline
+                    preload="auto"
+                    onEnded={(e) => { e.currentTarget.play(); }}
                     className="w-full h-full object-cover pointer-events-none select-none"
                     style={{
                       transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
