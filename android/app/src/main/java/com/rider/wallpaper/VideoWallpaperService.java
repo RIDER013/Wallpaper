@@ -28,9 +28,9 @@ public class VideoWallpaperService extends WallpaperService {
                 mediaPlayer = new MediaPlayer();
                 mediaPlayer.setSurface(holder.getSurface());
                 
-                File cacheDir = getCacheDir();
-                videoFile = new File(cacheDir, "live_wallpaper.mp4");
-                if (videoFile.exists()) {
+                File filesDir = getFilesDir();
+                videoFile = new File(filesDir, "live_wallpaper.mp4");
+                if (videoFile.exists() && videoFile.length() > 0) {
                     mediaPlayer.setDataSource(videoFile.getAbsolutePath());
                     mediaPlayer.setLooping(true);
                     mediaPlayer.setVolume(0f, 0f); // Muted for live wallpaper

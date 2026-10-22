@@ -13,7 +13,7 @@ import bgImage from './assets/bg.png';
 import { registerPlugin, Capacitor } from '@capacitor/core';
 
 interface WallpaperPlugin {
-  setWallpaper(options: { uri: string; type: string }): Promise<void>;
+  setWallpaper(options: { uri: string; type: string; isVideo?: boolean }): Promise<void>;
 }
 
 const WallpaperPlugin = registerPlugin<WallpaperPlugin>('WallpaperPlugin');
@@ -170,13 +170,15 @@ export default function App() {
   };
 
   const handleApplyWallpaper = async (option: string) => {
-    const uriToApply = (mediaType === 'video' && videoThumbnailUri) ? videoThumbnailUri : mediaUri;
-    if (!uriToApply) return;
+    if (!mediaUri) return;
+    const isVideo = mediaType === 'video';
+    const uriToApply = mediaUri;
     try {
       if (Capacitor.isNativePlatform()) {
         await WallpaperPlugin.setWallpaper({
           uri: uriToApply,
           type: option,
+          isVideo: isVideo,
         });
       } else {
         // Web preview simulation
