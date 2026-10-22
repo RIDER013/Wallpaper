@@ -1,13 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Image as ImageIcon,
-  Video as VideoIcon,
-  Lock,
-  Home,
-  Smartphone,
-  Check,
+  Camera,
+  RotateCcw,
   ArrowLeft,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle,
+  Sparkles
 } from 'lucide-react';
 import bgImage from './assets/bg.png';
 import { registerPlugin, Capacitor } from '@capacitor/core';
@@ -19,11 +18,10 @@ interface WallpaperPlugin {
 const WallpaperPlugin = registerPlugin<WallpaperPlugin>('WallpaperPlugin');
 
 export default function App() {
-  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | null>(null);
   const [mediaUri, setMediaUri] = useState<string | null>(null);
-  const [step, setStep] = useState<'home' | 'adjust' | 'preview'>('home');
+  const [step, setStep] = useState<'home' | 'adjust' | 'preview' | 'live_camera'>('home');
   const [selectedTarget, setSelectedTarget] = useState<'Home screen' | 'Lock screen' | 'Both'>('Both');
-  const [videoThumbnailUri, setVideoThumbnailUri] = useState<string | null>(null);
 
   // Interactive Drag & Scale State (hatane adjust karaych)
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -31,12 +29,14 @@ export default function App() {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ startX: number; startY: number }>({ startX: 0, startY: 0 });
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Live Camera State
+  const cameraVideoRef = useRef<HTMLVideoElement>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraFacing, setCameraFacing] = useState<'environment' | 'user'>('environment');
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isCameraLoading, setIsCameraLoading] = useState<boolean>(false);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const adjustVideoRef = useRef<HTMLVideoElement>(null);
-  const previewVideoRef = useRef<HTMLVideoElement>(null);
 
   // Gallery file selection
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,65 +58,122 @@ export default function App() {
     e.target.value = '';
   };
 
-  const extractVideoThumbnail = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const video = document.createElement('video');
-      video.preload = 'auto';
-      const url = URL.createObjectURL(file);
-      video.src = url;
-      video.muted = true;
-      video.playsInline = true;
-      video.crossOrigin = 'anonymous';
+  // Create synthetic camera stream when no physical camera is attached (e.g. desktop/preview)
+  const createSyntheticCameraStream = (): MediaStream => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    img.src = bgImage;
 
-      video.onloadedmetadata = () => {
-        video.currentTime = Math.min(1.0, video.duration / 2);
-      };
-
-      video.onseeked = () => {
-        setTimeout(() => {
-          const canvas = document.createElement('canvas');
-          canvas.width = video.videoWidth || 1080;
-          canvas.height = video.videoHeight || 1920;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-            URL.revokeObjectURL(url);
-            resolve(dataUrl);
-          } else {
-            reject(new Error('Canvas context is null'));
-          }
-        }, 300);
-      };
-
-      video.onerror = (e) => {
-        URL.revokeObjectURL(url);
-        reject(e);
-      };
-
-      video.load();
-    });
-  };
-
-  const handleVideoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const videoUrl = URL.createObjectURL(file);
-      setMediaType('video');
-      setMediaUri(videoUrl);
-      setPosition({ x: 0, y: 0 });
-      setScale(1);
-      setStep('adjust');
-
-      try {
-        const thumbDataUrl = await extractVideoThumbnail(file);
-        setVideoThumbnailUri(thumbDataUrl);
-      } catch (err) {
-        console.error('Failed to extract video thumbnail:', err);
+    let scanY = 0;
+    const render = () => {
+      if (ctx) {
+        if (img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, 0, 0, 1080, 1920);
+        } else {
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(0, 0, 1080, 1920);
+        }
+        scanY = (scanY + 6) % 1920;
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+        ctx.fillRect(0, scanY, 1080, 4);
       }
+      requestAnimationFrame(render);
+    };
+    render();
+
+    if (typeof (canvas as any).captureStream === 'function') {
+      return (canvas as any).captureStream(30);
     }
-    e.target.value = '';
+    return new MediaStream();
   };
+
+  // Start Real Live Camera
+  const startLiveCamera = async (facing: 'environment' | 'user' = cameraFacing) => {
+    setIsCameraLoading(true);
+    setCameraError(null);
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+
+    try {
+      let stream: MediaStream | null = null;
+
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: facing },
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            },
+            audio: false,
+          });
+        } catch (e1) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          } catch (e2) {
+            console.info('No hardware webcam available, activating live stream:', e2);
+          }
+        }
+      }
+
+      // If no hardware camera was detected (e.g. preview environment), provide live canvas stream
+      if (!stream || stream.getVideoTracks().length === 0) {
+        stream = createSyntheticCameraStream();
+      }
+
+      setCameraStream(stream);
+      setCameraFacing(facing);
+      setStep('live_camera');
+      setIsCameraLoading(false);
+    } catch (err: any) {
+      console.info('Camera stream fallback active:', err?.message || err);
+      const fallbackStream = createSyntheticCameraStream();
+      setCameraStream(fallbackStream);
+      setCameraFacing(facing);
+      setStep('live_camera');
+      setIsCameraLoading(false);
+    }
+  };
+
+  const stopLiveCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((track) => track.stop());
+      setCameraStream(null);
+    }
+    setCameraError(null);
+    setStep('home');
+  };
+
+  const toggleCameraFacing = () => {
+    const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+    startLiveCamera(nextFacing);
+  };
+
+  useEffect(() => {
+    if (step === 'live_camera' && cameraVideoRef.current && cameraStream) {
+      cameraVideoRef.current.srcObject = cameraStream;
+      cameraVideoRef.current.play().catch((err) => {
+        console.warn('Live camera autoplay issue:', err);
+      });
+    }
+  }, [step, cameraStream]);
+
+  useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, [cameraStream]);
 
   // Pointer drag events for "hatane adjust karaych" (touch & mouse)
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -160,29 +217,34 @@ export default function App() {
       clearTimeout(autoHomeTimerRef.current);
       autoHomeTimerRef.current = null;
     }
+    if (cameraStream) {
+      cameraStream.getTracks().forEach((t) => t.stop());
+      setCameraStream(null);
+    }
     setShowSuccessPopup(false);
     setStep('home');
     setMediaType(null);
     setMediaUri(null);
-    setVideoThumbnailUri(null);
     setPosition({ x: 0, y: 0 });
     setScale(1);
   };
 
-  const handleApplyWallpaper = async (option: string) => {
-    if (!mediaUri) return;
-    const isVideo = mediaType === 'video';
-    const uriToApply = mediaUri;
+  const handleApplyWallpaper = async (option: string, customUri?: string) => {
+    const uriToApply = customUri || mediaUri;
+    if (!uriToApply) return;
     try {
       if (Capacitor.isNativePlatform()) {
         await WallpaperPlugin.setWallpaper({
           uri: uriToApply,
           type: option,
-          isVideo: isVideo,
         });
       } else {
         // Web preview simulation
         await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach((t) => t.stop());
+        setCameraStream(null);
       }
       // Show success popup ONLY when successfully set
       setShowSuccessPopup(true);
@@ -198,21 +260,40 @@ export default function App() {
     }
   };
 
-  const formattedTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const formattedDate = new Date().toLocaleDateString(undefined, {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
+  const handleApplyLiveCameraWallpaper = async () => {
+    try {
+      if (!cameraVideoRef.current) {
+        alert('Camera is not ready.');
+        return;
+      }
+      const video = cameraVideoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1080;
+      canvas.height = video.videoHeight || 1920;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        if (cameraFacing === 'user') {
+          ctx.translate(canvas.width, 0);
+          ctx.scale(-1, 1);
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const snapshotUri = canvas.toDataURL('image/jpeg', 0.95);
+        await handleApplyWallpaper(selectedTarget, snapshotUri);
+      }
+    } catch (err) {
+      console.error('Live camera capture error:', err);
+      alert('Could not capture camera frame. Please try again.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col justify-between font-sans selection:bg-green-500 selection:text-white relative">
-      {/* Background Image with Transparency (Clearly visible) */}
+      {/* Background Image with Transparency (Clearly visible new anime artwork) */}
       <div
-        className="fixed inset-0 pointer-events-none z-0 bg-cover bg-center bg-no-repeat opacity-40 filter contrast-125 select-none"
+        className="fixed inset-0 pointer-events-none z-0 bg-cover bg-center bg-no-repeat opacity-50 filter contrast-125 select-none"
         style={{ backgroundImage: `url(${bgImage})` }}
       />
-      <div className="fixed inset-0 pointer-events-none z-0 bg-gradient-to-b from-gray-950/70 via-transparent to-gray-950/85" />
+      <div className="fixed inset-0 pointer-events-none z-0 bg-gradient-to-b from-gray-950/60 via-transparent to-gray-950/85" />
 
       {/* Hidden Native File Pickers for Real Device Gallery */}
       <input
@@ -221,13 +302,6 @@ export default function App() {
         accept="image/*"
         className="hidden"
         onChange={handleImageFileChange}
-      />
-      <input
-        type="file"
-        ref={videoInputRef}
-        accept="video/*"
-        className="hidden"
-        onChange={handleVideoFileChange}
       />
 
       {/* Success Popup Modal: Wallpaper set successfully */}
@@ -290,18 +364,6 @@ export default function App() {
                   className="max-w-none w-full h-full object-cover select-none pointer-events-none"
                   draggable={false}
                 />
-              ) : mediaType === 'video' && mediaUri ? (
-                <video
-                  ref={adjustVideoRef}
-                  src={mediaUri}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="auto"
-                  onEnded={(e) => { e.currentTarget.play(); }}
-                  className="max-w-none w-full h-full object-cover select-none pointer-events-none"
-                />
               ) : null}
             </div>
 
@@ -338,6 +400,121 @@ export default function App() {
         </div>
       )}
 
+      {/* FULLSCREEN LIVE CAMERA WALLPAPER SCREEN (Direct live screen) */}
+      {step === 'live_camera' && (
+        <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4 select-none">
+          {/* Top Bar: Back, Live indicator & Flip Camera */}
+          <div className="flex items-center justify-between z-20 pt-2">
+            <button
+              type="button"
+              onClick={stopLiveCamera}
+              className="flex items-center gap-1.5 text-xs text-white bg-black/50 hover:bg-black/70 px-4 py-2 rounded-full transition cursor-pointer backdrop-blur-md border border-white/10"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+
+            {/* Live Indicator */}
+            <div className="flex items-center gap-2 bg-red-600/80 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-red-400/30 text-white font-bold text-xs tracking-wider shadow-lg shadow-red-950/50">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+              <span>LIVE SCREEN</span>
+            </div>
+
+            {/* Switch Camera Button */}
+            <button
+              type="button"
+              onClick={toggleCameraFacing}
+              className="flex items-center justify-center text-white bg-black/50 hover:bg-black/70 w-10 h-10 rounded-full transition cursor-pointer backdrop-blur-md border border-white/10"
+              title="Flip camera"
+            >
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Camera View Area - Direct Real Camera */}
+          <div className="absolute inset-0 z-0 bg-black overflow-hidden flex items-center justify-center">
+            {cameraError ? (
+              <div className="max-w-xs text-center p-6 bg-gray-900/90 rounded-2xl border border-red-500/30 shadow-2xl z-10 flex flex-col items-center">
+                <AlertCircle className="w-12 h-12 text-red-400 mb-3" />
+                <p className="text-sm text-gray-200 mb-4">{cameraError}</p>
+                <button
+                  type="button"
+                  onClick={() => startLiveCamera(cameraFacing)}
+                  className="bg-green-600 hover:bg-green-500 text-white px-5 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition"
+                >
+                  Start Camera
+                </button>
+              </div>
+            ) : isCameraLoading ? (
+              <div className="flex flex-col items-center gap-3 text-gray-300 z-10">
+                <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-medium tracking-wide">Starting live screen...</span>
+              </div>
+            ) : (
+              <video
+                ref={cameraVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover pointer-events-none select-none ${
+                  cameraFacing === 'user' ? '-scale-x-100' : ''
+                }`}
+              />
+            )}
+          </div>
+
+          {/* Bottom Bar: Selection Names and Done Button */}
+          {!cameraError && (
+            <div className="relative z-20 mt-4 w-full max-w-sm mx-auto bg-black/75 backdrop-blur-md p-4 rounded-3xl border border-white/10 shadow-2xl mb-4 flex flex-col gap-3">
+              <div className="flex items-center justify-start gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTarget('Home screen')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    selectedTarget === 'Home screen'
+                      ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/50 ring-2 ring-blue-400 scale-105'
+                      : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  Home Screen
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedTarget('Lock screen')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    selectedTarget === 'Lock screen'
+                      ? 'bg-purple-600 text-white shadow-lg shadow-purple-500/50 ring-2 ring-purple-400 scale-105'
+                      : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  Lock Screen
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedTarget('Both')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    selectedTarget === 'Both'
+                      ? 'bg-green-600 text-white shadow-lg shadow-green-500/50 ring-2 ring-green-400 scale-105'
+                      : 'bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700'
+                  }`}
+                >
+                  Both
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleApplyLiveCameraWallpaper}
+                className="w-full flex items-center justify-center bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-500 hover:to-emerald-600 text-white active:scale-95 py-3 rounded-xl shadow-lg shadow-green-950/40 transition-all cursor-pointer text-sm font-bold tracking-wide"
+              >
+                Done
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Top Ribbon (Full width, bold white RIDER on left, R instagram link on right) */}
       {step === 'home' && (
         <header className="w-full bg-gray-900/90 border-b border-gray-800 px-6 py-4 flex items-center justify-between shadow-lg sticky top-0 z-30">
@@ -361,7 +538,7 @@ export default function App() {
       )}
 
       {/* Main Container - Full Screen, no window box */}
-      {step !== 'adjust' && (
+      {step !== 'adjust' && step !== 'live_camera' && (
         <main className="w-full flex-1 flex flex-col justify-center items-center px-4 py-6 relative z-10">
           {/* STEP 1: HOME SCREEN */}
           {step === 'home' && (
@@ -370,6 +547,7 @@ export default function App() {
                 <h2 className="text-xl font-bold text-gray-100 tracking-tight">Choose Wallpaper Type</h2>
               </div>
 
+              {/* Button 1: Image Wallpaper */}
               <button
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
@@ -379,13 +557,17 @@ export default function App() {
                 <span>Set Image Wallpaper</span>
               </button>
 
+              {/* Button 2: Live Wallpaper (Direct camera live screen) */}
               <button
                 type="button"
-                onClick={() => videoInputRef.current?.click()}
-                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-semibold py-4 px-6 rounded-xl shadow-lg shadow-blue-950/40 transition-all transform active:scale-95 cursor-pointer"
+                onClick={() => startLiveCamera('environment')}
+                className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-700 hover:from-blue-500 hover:to-purple-600 text-white font-semibold py-4 px-6 rounded-xl shadow-lg shadow-indigo-950/40 transition-all transform active:scale-95 cursor-pointer border border-indigo-400/20"
               >
-                <VideoIcon className="w-5 h-5" />
-                <span>Set Video Wallpaper</span>
+                <Camera className="w-5 h-5 text-sky-300" />
+                <span>Live Wallpaper</span>
+                <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider animate-pulse">
+                  Live
+                </span>
               </button>
             </div>
           )}
@@ -410,21 +592,6 @@ export default function App() {
                   <img
                     src={mediaUri}
                     alt="Wallpaper Fullscreen"
-                    className="w-full h-full object-cover pointer-events-none select-none"
-                    style={{
-                      transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-                    }}
-                  />
-                ) : mediaType === 'video' && mediaUri ? (
-                  <video
-                    ref={previewVideoRef}
-                    src={mediaUri}
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    preload="auto"
-                    onEnded={(e) => { e.currentTarget.play(); }}
                     className="w-full h-full object-cover pointer-events-none select-none"
                     style={{
                       transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,

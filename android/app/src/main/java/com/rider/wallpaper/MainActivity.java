@@ -7,6 +7,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Build;
 import android.util.Base64;
+import android.webkit.PermissionRequest;
+import android.webkit.WebChromeClient;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
@@ -22,6 +24,15 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(WallpaperPlugin.class);
         super.onCreate(savedInstanceState);
+
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    request.grant(request.getResources());
+                }
+            });
+        }
     }
 
     @CapacitorPlugin(name = "WallpaperPlugin")
@@ -47,14 +58,12 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 if (isVideo) {
-                    // Save video to files dir and make world-readable so VideoWallpaperService can access it without black screen
                     File videoFile = new File(getContext().getFilesDir(), "live_wallpaper.mp4");
                     FileOutputStream fos = new FileOutputStream(videoFile);
                     fos.write(decodedBytes);
                     fos.close();
                     videoFile.setReadable(true, false);
 
-                    // Launch Live Wallpaper chooser intent
                     Intent intent = new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER);
                     intent.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
                         new ComponentName(getContext(), VideoWallpaperService.class));
