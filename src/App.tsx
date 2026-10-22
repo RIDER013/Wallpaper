@@ -10,6 +10,7 @@ import { registerPlugin, Capacitor } from '@capacitor/core';
 
 interface WallpaperPlugin {
   setWallpaper(options: { uri: string; type: string; isVideo?: boolean }): Promise<void>;
+  pickImage?(): Promise<{ dataUrl: string }>;
 }
 
 const WallpaperPlugin = registerPlugin<WallpaperPlugin>('WallpaperPlugin');
@@ -46,6 +47,34 @@ export default function App() {
       reader.readAsDataURL(file);
     }
     e.target.value = '';
+  };
+
+  const handleOpenGallery = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        if (WallpaperPlugin.pickImage) {
+          const result = await WallpaperPlugin.pickImage();
+          if (result && result.dataUrl) {
+            setMediaType('image');
+            setMediaUri(result.dataUrl);
+            setPosition({ x: 0, y: 0 });
+            setScale(1);
+            setStep('adjust');
+            return;
+          }
+        }
+      } catch (err: any) {
+        console.warn('Native gallery picker cancelled or error:', err);
+        const errMsg = err?.message || String(err);
+        if (errMsg.toLowerCase().includes('cancel')) {
+          return;
+        }
+      }
+    }
+    // Web and secondary fallback
+    if (imageInputRef.current) {
+      imageInputRef.current.click();
+    }
   };
 
   // Pointer drag events for "hatane adjust karaych" (touch & mouse)
@@ -134,12 +163,18 @@ export default function App() {
       />
       <div className="fixed inset-0 pointer-events-none z-0 bg-gradient-to-b from-gray-950/60 via-transparent to-gray-950/85" />
 
-      {/* Hidden Native File Picker for Real Device Gallery */}
+      {/* Native and Web File Picker */}
       <input
         type="file"
         ref={imageInputRef}
         accept="image/*"
-        className="hidden"
+        style={{
+          position: 'fixed',
+          top: '-1000px',
+          left: '-1000px',
+          opacity: 0,
+          pointerEvents: 'none',
+        }}
         onChange={handleImageFileChange}
       />
 
@@ -301,7 +336,7 @@ export default function App() {
             {/* Single Option: Set Image Wallpaper */}
             <button
               type="button"
-              onClick={() => imageInputRef.current?.click()}
+              onClick={handleOpenGallery}
               className="flex items-center justify-center gap-3 text-white font-semibold rounded-xl shadow-lg transition-all transform active:scale-95 cursor-pointer"
               style={{
                 backgroundColor: '#000000',

@@ -1,37 +1,97 @@
 package com.rider.wallpaper;
 
+import android.app.Activity;
 import android.app.WallpaperManager;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Build;
+import android.provider.MediaStore;
 import android.util.Base64;
-import android.webkit.PermissionRequest;
-import android.webkit.WebChromeClient;
+
+import androidx.activity.result.ActivityResult;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(android.os.Bundle savedInstanceState) {
         registerPlugin(WallpaperPlugin.class);
         super.onCreate(savedInstanceState);
-
-        if (this.bridge != null && this.bridge.getWebView() != null) {
-            this.bridge.getWebView().setWebChromeClient(new WebChromeClient() {
-                @Override
-                public void onPermissionRequest(final PermissionRequest request) {
-                    request.grant(request.getResources());
-                }
-            });
-        }
+        // Note: Do NOT override WebChromeClient with a bare instance.
+        // Capacitor's default BridgeWebChromeClient is preserved so that
+        // file choosers and camera/storage requests function properly.
     }
 
     @CapacitorPlugin(name = "WallpaperPlugin")
     public static class WallpaperPlugin extends Plugin {
+
+        @PluginMethod
+        public void pickImage(PluginCall call) {
+            try {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("image/*");
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                startActivityForResult(call, intent, "pickImageResult");
+            } catch (Exception e) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+                    startActivityForResult(call, intent, "pickImageResult");
+                } catch (Exception ex) {
+                    call.reject("Could not open gallery: " + ex.getMessage());
+                }
+            }
+        }
+
+        @ActivityCallback
+        private void pickImageResult(PluginCall call, ActivityResult result) {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                Intent data = result.getData();
+                Uri imageUri = data.getData();
+                if (imageUri != null) {
+                    try {
+                        InputStream is = getContext().getContentResolver().openInputStream(imageUri);
+                        if (is != null) {
+                            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                            byte[] dataBytes = new byte[8192];
+                            int nRead;
+                            while ((nRead = is.read(dataBytes, 0, dataBytes.length)) != -1) {
+                                buffer.write(dataBytes, 0, nRead);
+                            }
+                            buffer.flush();
+                            byte[] imageBytes = buffer.toByteArray();
+                            is.close();
+
+                            String base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP);
+                            String mimeType = getContext().getContentResolver().getType(imageUri);
+                            if (mimeType == null) {
+                                mimeType = "image/jpeg";
+                            }
+
+                            JSObject ret = new JSObject();
+                            ret.put("dataUrl", "data:" + mimeType + ";base64," + base64);
+                            call.resolve(ret);
+                            return;
+                        }
+                    } catch (Exception e) {
+                        call.reject("Failed to read image data: " + e.getMessage());
+                        return;
+                    }
+                }
+            }
+            call.reject("Image selection cancelled");
+        }
+
         @PluginMethod
         public void setWallpaper(PluginCall call) {
             String imageUriStr = call.getString("uri");
